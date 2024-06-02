@@ -4,6 +4,11 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
 jobs:
   generate_and_post_image:
     runs-on: ubuntu-latest
@@ -19,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install matplotlib
+          pip install matplotlib requests
 
       - name: Generate Image
         run: |
@@ -32,19 +37,22 @@ jobs:
           plt.savefig('generated_image.png')
           "
 
-      - name: Upload Image to GitHub
-        uses: actions/upload-artifact@v3
-        with:
-          name: generated-image
-          path: generated_image.png
-
-      - name: Post Image Comment
+      - name: Upload Image and Post Comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          IMG_URL=$(curl -X POST -H "Authorization: bearer $GITHUB_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "query": "mutation($file: Upload!) { upload(file: $file) { url } }",
+            "variables": {
+              "file": "@generated_image.png"
+            }
+          }' https://api.github.com/graphql | jq -r '.data.upload.url')
+
           PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+
           curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
           -H "Accept: application/vnd.github.v3+json" \
           https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments \
-          -d "{\"body\": \"Generated Image artifact has been uploaded.\"}"
-
+          -d "{\"body\": \"![Generated Image]($IMG_URL)\"}"
