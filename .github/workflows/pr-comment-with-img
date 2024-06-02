@@ -1,0 +1,50 @@
+name: PR Comment with Generated Image
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  generate_and_post_image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          pip install matplotlib
+
+      - name: Generate Image
+        run: |
+          python -c "
+          import matplotlib.pyplot as plt
+          import numpy as np
+          x = np.linspace(0, 2 * np.pi, 100)
+          y = np.sin(x)
+          plt.plot(x, y)
+          plt.savefig('generated_image.png')
+          "
+
+      - name: Upload Image to GitHub
+        uses: actions/upload-artifact@v3
+        with:
+          name: generated-image
+          path: generated_image.png
+
+      - name: Post Image Comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+          curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments \
+          -d "{\"body\": \"Generated Image artifact has been uploaded.\"}"
+
